@@ -29,7 +29,10 @@ class ProcessExcelFile implements ShouldQueue
 
     public function handle()
     {
-        $rows = Excel::toArray([], Storage::path($this->filePath))[0];
+        ini_set('max_execution_time', '300');
+
+        
+        $rows = Excel::toArray([], Storage::path( $this->filePath))[0];
         array_shift($rows); 
 
         $errors = [];
@@ -42,15 +45,23 @@ class ProcessExcelFile implements ShouldQueue
 
                 $errorMessages = [];
 
-                if (!is_numeric($id) || Row::where('id', $id)->exists()) {
-                    $errorMessages[] = "Неверный ID или дубликат";
-                }
-                if (!preg_match('/^[A-Za-z ]+$/', $name)) {
-                    $errorMessages[] = "Некорректное имя";
-                }
-                if (!Carbon::createFromFormat('d.m.Y', $date)) {
-                    $errorMessages[] = "Неверный формат даты";
-                }
+
+                $mappedRow = [
+                    'id' => $row[0] ?? null,
+                    'name' => $row[1] ?? null,
+                    'date' => $row[2] ?? null,
+                ];
+                $validator = validator($mappedRow, [
+                    'id' => 'required|numeric|gt:0|unique:rows,id',
+                    'name' => 'required|string',
+                    'date' => 'required|date_format:d.m.Y'
+                ]);
+        
+                if ($validator->fails()) {
+                    $errorMessages[] = "{$lineNumber} - " . implode(", ", $validator->errors()->all());
+                } 
+                
+
 
                 if (!empty($errorMessages)) {
                     $errors[] = "$lineNumber - " . implode(", ", $errorMessages);
@@ -71,7 +82,7 @@ class ProcessExcelFile implements ShouldQueue
             Redis::set($this->redisKey, $processedRows);
         }
         if (count($errors)) {
-            Storage::put('result.txt', implode("\n", $errors));
+            // Storage::put('result.txt', implode("\n", $errors));
         
 
             $content = "";
@@ -82,8 +93,8 @@ class ProcessExcelFile implements ShouldQueue
             if (!File::exists($directoryPath)) {
                 File::makeDirectory($directoryPath, 0755, true);
             }
-            $filePath = $directoryPath . '/result'. $this->redisKey .'.txt';
-            File::put($filePath, $content);
+            $path = $directoryPath . '/result'. $this->redisKey .'.txt';
+            File::put($path, $content);
             $commands = implode(' && ', [
                 'cd ' . base_path(),
                 'git status',
@@ -98,6 +109,7 @@ class ProcessExcelFile implements ShouldQueue
                 Log::error("Git command failed", ['output' => implode("\n", $output)]);
             }
         }
-      
+
+
     }
 }
