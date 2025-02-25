@@ -82,7 +82,6 @@ class ProcessExcelFile implements ShouldQueue
             Redis::set($this->redisKey, $processedRows);
         }
         if (count($errors)) {
-            // Storage::put('result.txt', implode("\n", $errors));
         
 
             $content = "";
@@ -95,19 +94,8 @@ class ProcessExcelFile implements ShouldQueue
             }
             $path = $directoryPath . '/result'. $this->redisKey .'.txt';
             File::put($path, $content);
-            $commands = implode(' && ', [
-                'cd ' . base_path(),
-                'git status',
-                'git add .',
-                'git commit -a -m "Add result.txt with validation errors"',
-                'git push origin main'
-            ]);
-            
-            exec($commands . ' 2>&1', $output, $returnVar);
-            
-            if ($returnVar !== 0) {
-                Log::error("Git command failed", ['output' => implode("\n", $output)]);
-            }
+            \Artisan::call('git:push');
+
         }
 
 
